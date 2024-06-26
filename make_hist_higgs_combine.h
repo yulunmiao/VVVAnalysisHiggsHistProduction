@@ -29,6 +29,8 @@
 #include "Math/GenVector/VectorUtil.h"
 #include "Math/Point3D.h"
 
+#include "FakeFatjetScaleFactorProvider.h"
+
 #define LUMI2016APV 19.52
 #define LUMI2016 16.81
 #define LUMI2017 41.48
@@ -39,69 +41,41 @@
 typedef ROOT::Math::LorentzVector<ROOT::Math::PtEtaPhiM4D<float> > LV;
 
 struct LepInfo{
-        float pt;
-        float eta;
-        float phi;
-	float tight;
+	LV p4;
+	int tight;
 	int pdgid;
-	float mt;
 };
 
 struct FatJetInfo{
+	LV p4;
 	float sdmass;
-        float pt;
-        float eta;
-        float phi;
-        float tau21;
-        float tau2;
-        float tau1;
-        float deepMDW;
-        float deepW;
-	float deepMDZ;
-        float deepZ;
-        float deepT;
-        float deepMDbb;
 	float WPid;
 };
 
 struct JetInfo{
-        float pt;
-        float eta;
-        float phi;
-        bool passbloose;
-        bool passbmedium;
-        bool overlapwithfatjet;
+	LV p4;
+	bool overlapwithfatjet;
 };
 
 struct Event{
 	float scale;
-        vector<LepInfo> lep;
-        vector<FatJetInfo> fatjet;
-        vector<JetInfo> jet;
+	vector<LepInfo> lep;
+	vector<FatJetInfo> fatjet;
+	vector<JetInfo> jet;
 	int run;
 	unsigned long long event;
-        float mll;
-        float ht;
-        float st;
-	float stjesup;
-	float stjesdn;
-	float stjerup;
-	float stjerdn;
-	float deltaRll;
-        float deltaphill;
-	float njet_overlapremoved;
-	float nbloose;
-	float nbmedium;
 	float met;
-        bool ist;
-        bool isW;
-        bool issingleWq;
+	float mll;
+	float st;
+	float deltaRll;
+	int nbmedium;
+	int WFatJet;
 };
 
 
 class HistCollection{
-        protected:
-	TH1F* htotal;
+	protected:
+	TH1F* hcentral;
 	TH1F* hpuWeightup;
 	TH1F* hpuWeightdn;
 	TH1F* hprefireWeightup;	
@@ -110,135 +84,195 @@ class HistCollection{
 	TH1F* htriggerWeightdn;
 	TH1F* hlepSFelup;
 	TH1F* hlepSFeldn;
-        TH1F* hlepSFmuup;
+	TH1F* hlepSFmuup;
 	TH1F* hlepSFmudn;
 	TH1F* hbtagSFup;
 	TH1F* hbtagSFdn;
-	TH1F* hjesup;
-	TH1F* hjesdn;
+	TH1F* hfatjetSFup;
+	TH1F* hfatjetSFdn;
+	TH1F* hjesup[27];
+	TH1F* hjesdn[27];
 	TH1F* hjerup;
 	TH1F* hjerdn;
+	TH1F* halphasup;
+	TH1F* halphasdn;
 	TH1F* hqcdscale[6];
 	TH1F* hpdf[100];
 
-        TH1F* htotalEFT[216];
+	//TH2F* hcentral_vs_EFTCoefficient;
+	TH1F* hcentralEFT[216];
 	TH1F* hpuWeightupEFT[216];
-        TH1F* hpuWeightdnEFT[216];
-        TH1F* hprefireWeightupEFT[216];
-        TH1F* hprefireWeightdnEFT[216];
-        TH1F* htriggerWeightupEFT[216];
-        TH1F* htriggerWeightdnEFT[216];
-        TH1F* hlepSFelupEFT[216];
-        TH1F* hlepSFeldnEFT[216];
-        TH1F* hlepSFmuupEFT[216];
-        TH1F* hlepSFmudnEFT[216];
-        TH1F* hbtagSFupEFT[216];
-        TH1F* hbtagSFdnEFT[216];
-        TH1F* hjesupEFT[216];
-        TH1F* hjesdnEFT[216];
-        TH1F* hjerupEFT[216];
-        TH1F* hjerdnEFT[216];
+	TH1F* hpuWeightdnEFT[216];
+	TH1F* hprefireWeightupEFT[216];
+	TH1F* hprefireWeightdnEFT[216];
+	TH1F* htriggerWeightupEFT[216];
+	TH1F* htriggerWeightdnEFT[216];
+	TH1F* hlepSFelupEFT[216];
+	TH1F* hlepSFeldnEFT[216];
+	TH1F* hlepSFmuupEFT[216];
+	TH1F* hlepSFmudnEFT[216];
+	TH1F* hbtagSFupEFT[216];
+	TH1F* hbtagSFdnEFT[216];
+	TH1F* hfatjetSFupEFT[216];
+	TH1F* hfatjetSFdnEFT[216];
+	TH1F* hjesupEFT[27][216];
+	TH1F* hjesdnEFT[27][216];
+	TH1F* hjerupEFT[216];
+	TH1F* hjerdnEFT[216];
+	TH1F* halphasupEFT[216];
+	TH1F* halphasdnEFT[216];
+	TH1F* hqcdscaleEFT[6][216];
+	TH1F* hpdfEFT[100][216];
 
-
-        vector<unsigned long long> checkDuplicates;
-/*	
-	struct{
-		vector<unsigned long long> checkrun;
-		vector<int> checkevt;
-		int size;
-	}checkDuplicates;
-*/	
+	TString jes[27]={
+		"AbsoluteStat",
+		"AbsoluteScale",
+		"AbsoluteMPFBias",
+		"Fragmentation",
+		"SinglePionECAL",
+		"SinglePionHCAL",
+		"FlavorQCD",
+		"TimePtEta",
+		"RelativeJEREC1",
+		"RelativeJEREC2",
+		"RelativeJERHF",
+		"RelativePtBB",
+		"RelativePtEC1",
+		"RelativePtEC2",
+		"RelativePtHF",
+		"RelativeBal",
+		"RelativeSample",
+		"RelativeFSR",
+		"RelativeStatFSR",
+		"RelativeStatEC",
+		"RelativeStatHF",
+		"PileUpDataMC",
+		"PileUpPtRef",
+		"PileUpPtBB",
+		"PileUpPtEC1",
+		"PileUpPtEC2",
+		"PileUpPtHF"
+	};
+	FakeFatjetScaleFactorProvider fakefatjetsfprovider;
+	TString wcpoint_large[18]={"_m100p0","_m50p0","_m10p0","_m7p0","_m5p0","_m3p0","_m1p0","_m0p5","_m0p1","_0p1","_0p5","_1p0","_3p0","_5p0","_7p0","_10p0","_50p0","_100p0"};
+	TString wcpoint_small[18]={"_m10p0","_m5p0","_m1p0","_m0p7","_m0p5","_m0p3","_m0p1","_m0p05","_m0p01","_0p01","_0p05","_0p1","_0p3","_0p5","_0p7","_1p0","_5p0","_10p0"};
+	TString wc[12]={"cW","cHbox","cHDD","cHW","cHB","cHWB","cHl3","cHq1","cHq3","cHu","cHd","cll1"};
+	vector<unsigned long long> checkDuplicates;
 	virtual bool Cut(const Event &evt);
 	virtual bool LepID(const LepInfo &lep);
 	virtual bool FatJetID(const FatJetInfo &fatjet);
+	virtual bool WFatJetID(const FatJetInfo &fatjet);
 	virtual bool JetID(const JetInfo &jet);
-        public:
-        HistCollection();
-        ~HistCollection();
-        bool Write(const char* path);
-        bool Fill(const float lumi,const float cross_section,const char* path);
+	float Variable_of_Interest(const Event &evt);
+	public:
+	HistCollection();
+	~HistCollection();
+	bool Write(const char* path);
+	bool Fill(const float lumi,const float cross_section,const char* path, bool pdf_replica=false);
 };
 
 HistCollection::HistCollection(){
 	checkDuplicates.clear();
-//	checkDuplicates.checkrun.clear();
-//	checkDuplicates.checkevt.clear();
-//	checkDuplicates.size=0;
-	float x[4]={0,800,1400,1500};
-	htotal=		new TH1F("htotal","",3,x);
-	hpuWeightup=	new TH1F("pu_weight_Up","",3,x);
-	hpuWeightdn=	new TH1F("pu_weight_Down","",3,x);
-	hprefireWeightup=new TH1F("prefire_weight_Up","",3,x);
-	hprefireWeightdn=new TH1F("prefire_weight_Down","",3,x);
-	htriggerWeightup=new TH1F("trigger_weight_Up","",3,x);
-	htriggerWeightdn=new TH1F("trigger_weight_Down","",3,x);
-	hlepSFelup=	new TH1F("lep_sf_el_tight_Up","",3,x);
-	hlepSFeldn=	new TH1F("lep_sf_el_tight_Down","",3,x);
-	hlepSFmuup=	new TH1F("lep_sf_mu_tight_Up","",3,x);
-	hlepSFmudn=	new TH1F("lep_sf_mu_tight_Down","",3,x);
-	hbtagSFup=	new TH1F("btag_sf_medium_Up","",3,x);
-       	hbtagSFdn=	new TH1F("btag_sf_medium_Down","",3,x);
-	hjesup=		new TH1F("jes_Up","",3,x);
-        hjesdn=		new TH1F("jes_Down","",3,x);
-        hjerup=		new TH1F("jer_Up","",3,x);
-        hjerdn=		new TH1F("jer_Down","",3,x);
-        TString wcpoint_large[18]={"_m100p0","_m50p0","_m10p0","_m7p0","_m5p0","_m3p0","_m1p0","_m0p5","_m0p1","_0p1","_0p5","_1p0","_3p0","_5p0","_7p0","_10p0","_50p0","_100p0"};
-        TString wcpoint_small[18]={"_m10p0","_m5p0","_m1p0","_m0p7","_m0p5","_m0p3","_m0p1","_m0p05","_m0p01","_0p01","_0p05","_0p1","_0p3","_0p5","_0p7","_1p0","_5p0","_10p0"};
-        TString wc[12]={"cW","cHbox","cHDD","cHW","cHB","cHWB","cHl3","cHq1","cHq3","cHu","cHd","cll1"};
+	double x[4]={0,1000,1600,2000};
+	//3,x
+	//18,200,2000
+	hcentral=		new TH1F("hcentral",""				,3,x);
+	hpuWeightup=		new TH1F("pu_weight_Up",""			,3,x);
+	hpuWeightdn=		new TH1F("pu_weight_Down",""			,3,x);
+	hprefireWeightup=	new TH1F("prefire_weight_Up",""			,3,x);
+	hprefireWeightdn=	new TH1F("prefire_weight_Down",""		,3,x);
+	htriggerWeightup=	new TH1F("trigger_weight_Up",""			,3,x);
+	htriggerWeightdn=	new TH1F("trigger_weight_Down",""		,3,x);
+	hlepSFelup=		new TH1F("lep_sf_el_tight_Up",""		,3,x);
+	hlepSFeldn=		new TH1F("lep_sf_el_tight_Down",""		,3,x);
+	hlepSFmuup=		new TH1F("lep_sf_mu_tight_Up",""		,3,x);
+	hlepSFmudn=		new TH1F("lep_sf_mu_tight_Down",""		,3,x);
+	hbtagSFup=		new TH1F("btag_sf_medium_Up",""			,3,x);
+	hbtagSFdn=		new TH1F("btag_sf_medium_Down",""		,3,x);
+	hfatjetSFup=		new TH1F("fatjet_sf_medium_Up",""		,3,x);
+	hfatjetSFdn=		new TH1F("fatjet_sf_medium_Down",""		,3,x);
+	for(unsigned int i=0;i<27;i++){
+		hjesup[i]=	new TH1F("jes"+jes[i]+"_Up",""			,3,x);
+		hjesdn[i]=	new TH1F("jes"+jes[i]+"_Down",""		,3,x);
+	}
+	hjerup=			new TH1F("jer_Up",""				,3,x);
+	hjerdn=			new TH1F("jer_Down",""				,3,x);
+	halphasup=		new TH1F("alphas_Up",""				,3,x);
+	halphasdn=		new TH1F("alphas_Down",""			,3,x);
+	//hcentral_vs_EFTCoefficient= new TH2F("central_vs_EFTCoefficient","",3,x,91,-0.5,90.5);
 	for(unsigned int i=0;i<6;i++){
-		hqcdscale[i]=new TH1F(TString::Format("qcd_%d",i),"",3,x);
+		hqcdscale[i]=	new TH1F(TString::Format("qcd_%d",i),""		,3,x);
 	}
 	for(unsigned int i=0;i<100;i++){
-		hpdf[i]=new TH1F(TString::Format("pdf_%d",i),"",3,x);
+		hpdf[i]=		new TH1F(TString::Format("pdf_%d",i),""	,3,x);
 	}
+
 	for(unsigned int i=0;i<12;i++){
 		TString *wcp=wcpoint_large;
 		if(i==0 || i==3){
 			wcp=wcpoint_small;
 		}
 		for(unsigned int j=0;j<18;j++){
-			htotalEFT[i*18+j]=		new TH1F("htotal_"+wc[i]+wcp[j],"",3,x);
-			hpuWeightupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_pu_weight_Up","",3,x);
-			hpuWeightdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_pu_weight_Down","",3,x);
-			hprefireWeightupEFT[i*18+j]=	new TH1F(wc[i]+wcp[j]+"_prefire_weight_Up","",3,x);
-			hprefireWeightdnEFT[i*18+j]=	new TH1F(wc[i]+wcp[j]+"_prefire_weight_Down","",3,x);
-			htriggerWeightupEFT[i*18+j]=	new TH1F(wc[i]+wcp[j]+"_trigger_weight_Up","",3,x);
-			htriggerWeightdnEFT[i*18+j]=	new TH1F(wc[i]+wcp[j]+"_trigger_weight_Down","",3,x);
-			hlepSFelupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_lep_sf_el_tight_Up","",3,x);
-			hlepSFeldnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_lep_sf_el_tight_Down","",3,x);
-			hlepSFmuupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_lep_sf_mu_tight_Up","",3,x);
-			hlepSFmudnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_lep_sf_mu_tight_Down","",3,x);
-			hbtagSFupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_btag_sf_medium_Up","",3,x);
-			hbtagSFdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_btag_sf_medium_Down","",3,x);
-			hjesupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_jes_Up","",3,x);
-			hjesdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_jes_Down","",3,x);
-			hjerupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_jer_Up","",3,x);
-			hjerdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_jer_Down","",3,x);
+			hcentralEFT[i*18+j]=		new TH1F("hcentral_"+wc[i]+wcp[j],""			,3,x);
+			hpuWeightupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_pu_weight_Up",""		,3,x);
+			hpuWeightdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_pu_weight_Down",""		,3,x);
+			hprefireWeightupEFT[i*18+j]=	new TH1F(wc[i]+wcp[j]+"_prefire_weight_Up",""		,3,x);
+			hprefireWeightdnEFT[i*18+j]=	new TH1F(wc[i]+wcp[j]+"_prefire_weight_Down",""		,3,x);
+			htriggerWeightupEFT[i*18+j]=	new TH1F(wc[i]+wcp[j]+"_trigger_weight_Up",""		,3,x);
+			htriggerWeightdnEFT[i*18+j]=	new TH1F(wc[i]+wcp[j]+"_trigger_weight_Down",""		,3,x);
+			hlepSFelupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_lep_sf_el_tight_Up",""		,3,x);
+			hlepSFeldnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_lep_sf_el_tight_Down",""	,3,x);
+			hlepSFmuupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_lep_sf_mu_tight_Up",""		,3,x);
+			hlepSFmudnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_lep_sf_mu_tight_Down",""	,3,x);
+			hbtagSFupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_btag_sf_medium_Up",""		,3,x);
+			hbtagSFdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_btag_sf_medium_Down",""		,3,x);
+			hfatjetSFupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_fatjet_sf_medium_Up",""		,3,x);
+			hfatjetSFdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_fatjet_sf_medium_Down",""	,3,x);
+			for(unsigned int k=0;k<27;k++){
+				hjesupEFT[k][i*18+j]=	new TH1F(wc[i]+wcp[j]+"_jes"+jes[k]+"_Up",""		,3,x);
+				hjesdnEFT[k][i*18+j]=	new TH1F(wc[i]+wcp[j]+"_jes"+jes[k]+"_Down",""		,3,x);
+			}			
+			hjerupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_jer_Up",""			,3,x);
+			hjerdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_jer_Down",""			,3,x);
+			halphasupEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_alphas_Up",""			,3,x);
+			halphasdnEFT[i*18+j]=		new TH1F(wc[i]+wcp[j]+"_alphas_Down",""			,3,x);
+			for(unsigned int k=0;k<6;k++){
+				hqcdscaleEFT[k][i*18+j]=new TH1F(TString::Format(wc[i]+wcp[j]+"_qcd_%d",k),""	,3,x);
+			}
+			for(unsigned int k=0;k<100;k++){
+				hpdfEFT[k][i*18+j]=	new TH1F(TString::Format(wc[i]+wcp[j]+"_pdf_%d",k),""	,3,x);
+			}
 		}
 	}
+
 
 }
 
 HistCollection::~HistCollection(){
-	delete htotal;
+	delete hcentral;
 	delete hpuWeightup;
-        delete hpuWeightdn;
-        delete hprefireWeightup;
-        delete hprefireWeightdn;
-        delete htriggerWeightup;
-        delete htriggerWeightdn;
-        delete hlepSFelup;
-        delete hlepSFeldn;
-        delete hlepSFmuup;
-        delete hlepSFmudn;
-        delete hbtagSFup;
-        delete hbtagSFdn;
-
-	delete hjesup;
-        delete hjesdn;
-        delete hjerup;
-        delete hjerdn;
-
+	delete hpuWeightdn;
+	delete hprefireWeightup;
+	delete hprefireWeightdn;
+	delete htriggerWeightup;
+	delete htriggerWeightdn;
+	delete hlepSFelup;
+	delete hlepSFeldn;
+	delete hlepSFmuup;
+	delete hlepSFmudn;
+	delete hbtagSFup;
+	delete hbtagSFdn;
+	delete hfatjetSFup;
+	delete hfatjetSFdn;
+	delete halphasup;
+	delete halphasdn;
+	//delete hcentral_vs_EFTCoefficient;
+	for(unsigned int i=0;i<27;i++){
+		delete hjesup[i];
+		delete hjesdn[i];
+	}
+	delete hjerup;
+	delete hjerdn;
 	for(unsigned int i=0;i<6;i++){
 		delete hqcdscale[i];
 	}
@@ -247,7 +281,7 @@ HistCollection::~HistCollection(){
 	}
 
 	for(unsigned int i=0;i<216;i++){
-		delete htotalEFT[i];
+		delete hcentralEFT[i];
 		delete hpuWeightupEFT[i];
 		delete hpuWeightdnEFT[i];
 		delete hprefireWeightupEFT[i];
@@ -260,17 +294,28 @@ HistCollection::~HistCollection(){
 		delete hlepSFmudnEFT[i];
 		delete hbtagSFupEFT[i];
 		delete hbtagSFdnEFT[i];
-
-		delete hjesupEFT[i];
-		delete hjesdnEFT[i];
+		delete hfatjetSFupEFT[i];
+		delete hfatjetSFdnEFT[i];
+		for(unsigned int j=0;j<27;j++){
+			delete hjesupEFT[j][i];
+			delete hjesdnEFT[j][i];
+		}
 		delete hjerupEFT[i];
 		delete hjerdnEFT[i];
+		delete halphasupEFT[i];
+		delete halphasdnEFT[i];
+		for(unsigned int j=0;j<6;j++){
+			delete hqcdscaleEFT[j][i];
+		}
+		for(unsigned int j=0;j<100;j++){
+			delete hpdfEFT[j][i];
+		}
 	}
 
 }
 
 bool HistCollection::Cut(const Event &evt){
-        return true;
+    return true;
 }
 
 bool HistCollection::LepID(const LepInfo &lep){
@@ -281,61 +326,106 @@ bool HistCollection::FatJetID(const FatJetInfo &fatjet){
 	return true;
 }
 
+bool HistCollection::WFatJetID(const FatJetInfo &fatjet){
+	return true;
+}
+
 bool HistCollection::JetID(const JetInfo &jet){
 	return true;
 }
 
-bool HistCollection::Fill(const float lumi,const float cross_section,const char* path){
-    TChain *chain=new TChain("t");
+float HistCollection::Variable_of_Interest(const Event &evt){
+	//For SS+1fatjet channel, varialbe of interest is stmet
+	//overlap with lepton is already handle at looper level
+	float rtn=0;
+	for(unsigned int ilep=0;ilep<evt.lep.size();ilep++){
+		rtn+= evt.lep.at(ilep).p4.pt();
+	}
+	for(unsigned int ifatjet=0;ifatjet<evt.fatjet.size();ifatjet++){
+		rtn+= evt.fatjet.at(ifatjet).p4.pt();
+	}
+	for(unsigned int ijet=0;ijet<evt.jet.size();ijet++){
+		bool overlap=false;
+		for(unsigned int ifatjet=0;ifatjet<evt.fatjet.size();ifatjet++){
+			if(ROOT::Math::VectorUtil::DeltaR(evt.jet.at(ijet).p4,evt.fatjet.at(ifatjet).p4)<0.8){
+				overlap=true;
+				break;
+			}
+		}
+		if(overlap) continue;
+		rtn+= evt.jet.at(ijet).p4.pt();
+	}
+	rtn+= evt.met;
+	return rtn;
+}
+bool HistCollection::Fill(const float lumi,const float cross_section,const char* path, bool pdf_replica=false){
+	TChain *chain=new TChain("t");
 	Event evt;
-    vector<LV> *lepp4=0,*jetp4=0,*fatjetp4=0,*genp4=0;
-	LV *met=0,*metjesup=0,*metjesdn=0,*metjerup=0,*metjerdn=0;
+	Event evtvar[56];
+	vector<LV> *lepp4=0,*jetp4=0,*fatjetp4=0,*genp4=0;
+	vector<LV> *jetp4var[56],*fatjetp4var[56];
+	vector<float> *fatjetsdmvar[56]; 
+	LV *met=0;
+	LV *metp4var[56];
 	vector<float> *fatjetpt=0;
-	vector<bool> *jetbloose=0,*jetbmedium=0;
-	vector<float> *fatjetsdm=0,*tau21=0,*tau2=0,*tau1=0,*deepMDW=0,*deepW=0,*deepMDZ=0,*deepZ=0,*deepT=0,*deepMDbb=0,*EFT=0,*fatjetptjesup=0,*fatjetptjesdn=0,*fatjetptjerup=0,*fatjetptjerdn=0,*jetptjesup=0,*jetptjesdn=0,*jetptjerup=0,*jetptjerdn=0,*qcd=0,*pdf=0;
+	vector<bool> *jetbmedium=0;
+	vector<float> *fatjetsdm=0,*EFT=0,*qcd=0,*pdf=0,*EFTCoef=0;
 	vector<int> *leptight=0,*WPid=0,*WPida=0,*pdgid=0,*genpdgid=0,*genmotheridx=0,*genmotherid=0;
 	float puWeight,puWeightup,puWeightdn;
 	float prefireWeight,prefireWeightup,prefireWeightdn;
 	float triggerWeight,triggerWeightup,triggerWeightdn;
 	float lepSF,lepSFelup,lepSFeldn,lepSFmuup,lepSFmudn;
 	float btagSF,btagSFup,btagSFdn; 
+	vector<float> *fjSF=0,*fjSFup=0,*fjSFdn=0;
 	float genWeight;
-	int nbmedium,nbloose,run,isData;
+	int nbmedium,run,isData;
+	int nbmediumvar[56];
 	bool pass_duplicate_removal;
 	unsigned long long event;
-	chain->SetBranchAddress("Common_lep_tight",		&leptight);
-    chain->SetBranchAddress("Common_lep_p4",                &lepp4);
-	chain->SetBranchAddress("Common_lep_pdgid",		&pdgid);
-    chain->SetBranchAddress("Common_jet_p4",                &jetp4);
-	chain->SetBranchAddress("Common_jet_passBloose",	&jetbloose);
-	chain->SetBranchAddress("Common_jet_passBmedium",       &jetbmedium);
-	chain->SetBranchAddress("Common_nb_loose",		&nbloose);
-	chain->SetBranchAddress("Common_nb_medium",             &nbmedium);
-    chain->SetBranchAddress("Common_fatjet_p4",             &fatjetp4);
-    chain->SetBranchAddress("Common_fatjet_msoftdrop",      &fatjetsdm);
-    chain->SetBranchAddress("Common_fatjet_tau21",          &tau21);
-    chain->SetBranchAddress("Common_fatjet_tau2",           &tau2);
-    chain->SetBranchAddress("Common_fatjet_tau1",           &tau1);
-	chain->SetBranchAddress("Common_fatjet_particleNetMD_W",       &deepMDW);
-    chain->SetBranchAddress("Common_fatjet_deep_W",         &deepW);
-    chain->SetBranchAddress("Common_fatjet_deepMD_Z",       &deepMDZ);
-	chain->SetBranchAddress("Common_fatjet_deep_Z",         &deepZ);
-    chain->SetBranchAddress("Common_fatjet_deep_T",         &deepT);
-    chain->SetBranchAddress("Common_fatjet_deepMD_bb",      &deepMDbb);
-	chain->SetBranchAddress("Common_fatjet_WP_MD",		&WPid);
-    chain->SetBranchAddress("Common_met_p4",		&met);
-	chain->SetBranchAddress("Common_run",			&run);
-	chain->SetBranchAddress("Common_evt",			&event);
-	chain->SetBranchAddress("Common_isData",		&isData);
-	chain->SetBranchAddress("Common_LHEWeight_mg_reweighting", &EFT);
-    chain->SetBranchAddress("Common_genWeight",             &genWeight);
-    chain->SetBranchAddress("SS2jet_raw_gen_mother_idx",	&genmotheridx);
-    chain->SetBranchAddress("SS2jet_raw_gen_mother_id",	&genmotherid);
-	chain->SetBranchAddress("SS2jet_raw_gen_pdgid",		&genpdgid);
-	chain->SetBranchAddress("SS2jet_raw_gen_p4s",		&genp4);
+	chain->SetBranchAddress("Common_lep_tight",			&leptight);
+	chain->SetBranchAddress("Common_lep_p4",			&lepp4);
+	chain->SetBranchAddress("Common_lep_pdgid",			&pdgid);
+	chain->SetBranchAddress("Common_jet_p4",			&jetp4);
+	chain->SetBranchAddress("Common_nb_medium",			&nbmedium);
+	chain->SetBranchAddress("Common_fatjet_p4",			&fatjetp4);
+	chain->SetBranchAddress("Common_fatjet_msoftdrop",		&fatjetsdm);
+	chain->SetBranchAddress("Common_fatjet_WP_MD",			&WPid);
+	chain->SetBranchAddress("Common_met_p4",			&met);
+	chain->SetBranchAddress("Common_run",				&run);
+	chain->SetBranchAddress("Common_evt",				&event);
+	chain->SetBranchAddress("Common_isData",			&isData);
+	chain->SetBranchAddress("Common_LHEWeight_mg_reweighting",	&EFT);
+	chain->SetBranchAddress("Common_genWeight",			&genWeight);
+	//chain->SetBranchAddress("Common_EFTfitCoefficient",		&EFTCoef);
+	//jes and jer
+	for(unsigned int i=0;i<27;i++){
+		jetp4var[i]=0;jetp4var[i+28]=0;fatjetp4var[i]=0;fatjetp4var[i+28]=0;metp4var[i]=0;metp4var[i+28]=0;fatjetsdmvar[i]=0;fatjetsdmvar[i+28]=0;
+		chain->SetBranchAddress("Common_jet_p4_jes"+jes[i]+"up",	&jetp4var[i]);
+		chain->SetBranchAddress("Common_fatjet_p4_jes"+jes[i]+"up",	&fatjetp4var[i]);
+		chain->SetBranchAddress("Common_fatjet_msoftdrop_jes"+jes[i]+"up", &fatjetsdmvar[i]);
+		chain->SetBranchAddress("Common_met_p4_jes"+jes[i]+"up",	&metp4var[i]);
+		chain->SetBranchAddress("Common_nb_medium_jes"+jes[i]+"up",	&nbmediumvar[i]);
+
+		chain->SetBranchAddress("Common_jet_p4_jes"+jes[i]+"dn",	&jetp4var[i+28]);
+		chain->SetBranchAddress("Common_fatjet_p4_jes"+jes[i]+"dn",	&fatjetp4var[i+28]);
+		chain->SetBranchAddress("Common_fatjet_msoftdrop_jes"+jes[i]+"dn", &fatjetsdmvar[i+28]);
+		chain->SetBranchAddress("Common_met_p4_jes"+jes[i]+"dn",	&metp4var[i+28]);	
+		chain->SetBranchAddress("Common_nb_medium_jes"+jes[i]+"dn",	&nbmediumvar[i+28]);
+	}
+	jetp4var[27]=0;jetp4var[55]=0;fatjetp4var[27]=0;fatjetp4var[55]=0;metp4var[27]=0;metp4var[55]=0;fatjetsdmvar[27]=0;fatjetsdmvar[55]=0;
+	chain->SetBranchAddress("Common_jet_p4_jerup",		&jetp4var[27]);
+	chain->SetBranchAddress("Common_fatjet_p4_jerup",	&fatjetp4var[27]);
+	chain->SetBranchAddress("Common_fatjet_msoftdrop_jerup", &fatjetsdmvar[27]);
+	chain->SetBranchAddress("Common_met_p4_jerup",		&metp4var[27]);
+	chain->SetBranchAddress("Common_nb_medium_jerup",	&nbmediumvar[27]);
+
+	chain->SetBranchAddress("Common_jet_p4_jerdn",		&jetp4var[55]);
+	chain->SetBranchAddress("Common_fatjet_p4_jerdn",	&fatjetp4var[55]);
+	chain->SetBranchAddress("Common_fatjet_msoftdrop_jerdn", &fatjetsdmvar[55]);
+	chain->SetBranchAddress("Common_met_p4_jerdn",		&metp4var[55]);	
+	chain->SetBranchAddress("Common_nb_medium_jerdn",	&nbmediumvar[55]);
 
 	//scale factors
-
 	chain->SetBranchAddress("Common_event_puWeight",	&puWeight);
 	chain->SetBranchAddress("Common_event_puWeightup",	&puWeightup);
 	chain->SetBranchAddress("Common_event_puWeightdn",	&puWeightdn);
@@ -349,37 +439,30 @@ bool HistCollection::Fill(const float lumi,const float cross_section,const char*
 	chain->SetBranchAddress("Common_event_lepSFelupTight",	&lepSFelup);
 	chain->SetBranchAddress("Common_event_lepSFeldnTight",	&lepSFeldn);
 	chain->SetBranchAddress("Common_event_lepSFmuupTight",	&lepSFmuup);
-    chain->SetBranchAddress("Common_event_lepSFmudnTight",	&lepSFmudn);
+	chain->SetBranchAddress("Common_event_lepSFmudnTight",	&lepSFmudn);
 	chain->SetBranchAddress("Common_event_mediumBtagSF",	&btagSF);
 	chain->SetBranchAddress("Common_event_mediumBtagSFup",	&btagSFup);
 	chain->SetBranchAddress("Common_event_mediumBtagSFdn",	&btagSFdn);
+	chain->SetBranchAddress("Common_fatjet_MD_SFMedium",	&fjSF);
+	chain->SetBranchAddress("Common_fatjet_MD_SFupMedium",	&fjSFup);
+	chain->SetBranchAddress("Common_fatjet_MD_SFdnMedium",	&fjSFdn);
 	chain->SetBranchAddress("Common_event_QCDScale",	&qcd);
 	chain->SetBranchAddress("Common_event_PDF",		&pdf);
 
-	chain->SetBranchAddress("Common_met_p4_jesup",&metjesup);	
-	chain->SetBranchAddress("Common_met_p4_jesdn",&metjesdn);
-    chain->SetBranchAddress("Common_met_p4_jerup",&metjerup);
-    chain->SetBranchAddress("Common_met_p4_jerdn",&metjerdn);
-	chain->SetBranchAddress("Common_fatjet_pt_jesup",&fatjetptjesup);
-    chain->SetBranchAddress("Common_fatjet_pt_jesdn",&fatjetptjesdn);
-    chain->SetBranchAddress("Common_fatjet_pt_jerup",&fatjetptjerup);
-    chain->SetBranchAddress("Common_fatjet_pt_jerdn",&fatjetptjerdn);
-	chain->SetBranchAddress("Common_jet_pt_jesup",&jetptjesup);
-    chain->SetBranchAddress("Common_jet_pt_jesdn",&jetptjesdn);
-    chain->SetBranchAddress("Common_jet_pt_jerup",&jetptjerup);
-	chain->SetBranchAddress("Common_jet_pt_jerdn",&jetptjerdn);
-
-
+	chain->SetBranchAddress("Common_gen_mother_idx",	&genmotheridx);
+	chain->SetBranchAddress("Common_gen_mother_id",		&genmotherid);
+	chain->SetBranchAddress("Common_gen_pdgid",		&genpdgid);
+	chain->SetBranchAddress("Common_gen_p4s",		&genp4);
 
 	chain->Add(path);
 	TFile *file=TFile::Open(path);
 	float scale;
 	if(!file->IsOpen()) return false;
-	scale = cross_section * 1000 * lumi / ((TH1F*) file->Get("Wgt__h_nevents"))->Integral();
-    for(unsigned int i=0;i<chain->GetEntries();i++){
+	scale = cross_section * 1000 * lumi / ((TH1D*) file->Get("Wgt__h_nevents"))->Integral();
+	for(unsigned int i=0;i<chain->GetEntries();i++){
         chain->GetEntry(i);
 		if(EFT->size()!=0)      scale = cross_section * 1000 * lumi / ((TH1F*) file->Get("Root__h_Common_LHEWeight_mg_reweighting_times_genWeight"))->GetBinContent(1) * EFT->at(0);
-
+		//else if (EFTCoef->size()!=0)  scale = cross_section * 1000 * lumi / ((TH1F*) file->Get("Root__h_Common_LHEWeight_mg_reweighting_times_genWeight"))->GetBinContent(1) * EFTCoef->at(0);
 		if(isData) evt.scale=1;
 		else evt.scale =  ( (genWeight>0) - (genWeight<0) ) * scale * puWeight * prefireWeight * triggerWeight * lepSF * btagSF;
 		//build the event
@@ -387,80 +470,147 @@ bool HistCollection::Fill(const float lumi,const float cross_section,const char*
 		evt.fatjet.clear();
 		evt.jet.clear();
 		evt.st=0;
-		evt.stjesup=0;
-        evt.stjesdn=0;
-        evt.stjerup=0;
-        evt.stjerdn=0;
-
-		evt.nbloose=0;
 		evt.nbmedium=0;
-		evt.njet_overlapremoved=0;
+		evt.WFatJet=0;
 		evt.run=run;
 		evt.event=event;
-
+		float fatjetSF=1,fatjetSFup=1,fatjetSFdn=1;
+		for(unsigned int ivar=0;ivar<56;ivar++){
+			evtvar[ivar].scale =  ( (genWeight>0) - (genWeight<0) ) * scale * puWeight * prefireWeight * triggerWeight * lepSF * btagSF;
+			evtvar[ivar].lep.clear();
+			evtvar[ivar].fatjet.clear();
+			evtvar[ivar].jet.clear();
+			evtvar[ivar].st=0;
+			evtvar[ivar].nbmedium=0;
+			evtvar[ivar].WFatJet=0;
+			evtvar[ivar].run=run;
+			evtvar[ivar].event=event;
+		}
 		for(unsigned int ilep=0;ilep<lepp4->size();ilep++){
 			LepInfo temp;
-			temp.pt=lepp4->at(ilep).pt();
-			temp.eta=lepp4->at(ilep).eta();
-			temp.phi=lepp4->at(ilep).phi();
+			temp.p4=lepp4->at(ilep);
 			temp.tight=leptight->at(ilep);
 			temp.pdgid=pdgid->at(ilep);
-			float phi1 = lepp4->at(ilep).Phi();
-		    float phi2 = met->Phi();
-			float Et1  = lepp4->at(ilep).Et();
-			float Et2  = met->Et();
-			temp.mt=sqrt(2*Et1*Et2*(1.0 - cos(phi1-phi2)));
 			if(!LepID(temp)) continue;
 			evt.lep.push_back(temp);
 			evt.st+=lepp4->at(ilep).pt();
-			evt.stjesup+=lepp4->at(ilep).pt();
-            evt.stjesdn+=lepp4->at(ilep).pt();
-            evt.stjerup+=lepp4->at(ilep).pt();
-            evt.stjerdn+=lepp4->at(ilep).pt();
-
+			for(unsigned int ivar=0;ivar<56;ivar++){
+				evtvar[ivar].lep.push_back(temp);
+				evtvar[ivar].st+=lepp4->at(ilep).pt();
+			}
 		}
 
 		evt.deltaRll=ROOT::Math::VectorUtil::DeltaR(lepp4->at(0),lepp4->at(1));
 		evt.mll=(lepp4->at(0)+lepp4->at(1)).M();
-
+		for(unsigned int ivar=0;ivar<56;ivar++){
+			evtvar[ivar].deltaRll=ROOT::Math::VectorUtil::DeltaR(lepp4->at(0),lepp4->at(1));
+			evtvar[ivar].mll=(lepp4->at(0)+lepp4->at(1)).M();
+		}
 		for(unsigned int ifatjet=0;ifatjet<fatjetp4->size();ifatjet++){
 			FatJetInfo temp;
+			temp.p4=fatjetp4->at(ifatjet);
 			temp.sdmass=fatjetsdm->at(ifatjet);
-			temp.pt=fatjetp4->at(ifatjet).pt();
-			temp.eta=fatjetp4->at(ifatjet).eta();
-			temp.phi=fatjetp4->at(ifatjet).phi();
-			temp.tau21=tau21->at(ifatjet);
-			temp.tau2=tau2->at(ifatjet);
-			temp.tau1=tau1->at(ifatjet);
-			temp.deepMDW=deepMDW->at(ifatjet);
-			temp.deepW=deepW->at(ifatjet);
-			temp.deepMDZ=deepZ->at(ifatjet);
-			temp.deepZ=deepZ->at(ifatjet);
-			temp.deepT=deepT->at(ifatjet);
-			temp.deepMDbb=deepMDbb->at(ifatjet);
 			temp.WPid=WPid->at(ifatjet);
-			if(!FatJetID(temp)) continue;	
-			
+			if(!FatJetID(temp)) continue;
 			evt.st+=fatjetp4->at(ifatjet).pt();
-			if(fatjetptjesup->size()>0){
-				evt.stjesup+=fatjetptjesup->at(ifatjet);
-        	                evt.stjesdn+=fatjetptjesdn->at(ifatjet);
-	                        evt.stjerup+=fatjetptjerup->at(ifatjet);
-                        	evt.stjerdn+=fatjetptjerdn->at(ifatjet);
-			}
 			evt.fatjet.push_back(temp);
-
+			if(WFatJetID(temp)){
+				evt.WFatJet++;
+				if(evt.WFatJet==1){
+					int type = fakefatjetsfprovider.type(*genp4,*genpdgid,*genmotherid,fatjetp4->at(ifatjet));
+					if(type==-1){
+						fatjetSF=fjSF->at(ifatjet);
+						fatjetSFup=fjSFup->at(ifatjet);
+						fatjetSFdn=fjSFdn->at(ifatjet);					
+					}
+					else{
+						int year = 10;
+						if((lumi>59. && lumi<61.) || (lumi>137. && lumi<138.)){
+							year = 2018;
+						}
+						else if(lumi>41. && lumi<43.){
+							year = 2017;
+						}
+						else if(lumi>16. && lumi<17.){
+							year = 2016;
+						}
+						fatjetSF=fakefatjetsfprovider.eval(year,type,2);
+						fatjetSFup=fakefatjetsfprovider.eval_up(year,type,2);
+						fatjetSFdn=fakefatjetsfprovider.eval_down(year,type,2);
+					}
+					/*
+					int W=-1;
+					int Wq1=-1;
+					int Wq2=-1;
+					bool isWq1=false;
+					bool isWq2=false;
+					for(unsigned igen=0;igen<genpdgid->size();igen++){
+						//search for first quark
+						if(!((abs(genmotherid->at(igen))==24)&&(abs(genpdgid->at(igen))<=6))) continue;
+						Wq1=igen;
+						W=genmotheridx->at(igen);
+						isWq1=ROOT::Math::VectorUtil::DeltaR(genp4->at(igen),fatjetp4->at(ifatjet))<0.8;
+						//search for second quark
+						for(unsigned int jgen=igen+1;jgen<genpdgid->size();jgen++){
+							if((genmotheridx->at(jgen)==W)&&(abs(genpdgid->at(jgen))<=6)){
+								Wq2=jgen;
+								igen=jgen;
+								isWq2=ROOT::Math::VectorUtil::DeltaR(genp4->at(jgen),fatjetp4->at(ifatjet))<0.8;
+								break;
+							}
+						}
+					}
+					if(isWq1&&isWq2){
+						fatjetSF=fjSF->at(ifatjet);
+						fatjetSFup=fjSFup->at(ifatjet);
+						fatjetSFdn=fjSFdn->at(ifatjet);
+					}
+					else{
+						fatjetSF=1.18;
+						fatjetSFup=1.22;
+						fatjetSFdn=1.14;
+						if(lumi>59. && lumi<61.){
+							fatjetSF=1.24;
+							fatjetSFup=1.29;
+							fatjetSFdn=1.19;
+						}
+						else if(lumi>41. && lumi<43.){
+							fatjetSF=1.21;
+							fatjetSFup=1.26;
+							fatjetSFdn=1.16;
+						}
+						else if(lumi>137. && lumi<138.){
+							fatjetSF=1.24;
+							fatjetSFup=1.29;
+							fatjetSFdn=1.19;
+						}
+					}
+					*/
+				}
+			} 
+		}
+		evt.scale*=fatjetSF;
+		for(unsigned int ivar=0;ivar<56;ivar++){
+			for(unsigned int ifatjet=0;ifatjet<fatjetp4var[ivar]->size();ifatjet++){
+				FatJetInfo tempvar;
+				tempvar.p4=fatjetp4var[ivar]->at(ifatjet);
+				tempvar.sdmass=fatjetsdmvar[ivar]->at(ifatjet);
+				tempvar.WPid=WPid->at(ifatjet);
+				if(!FatJetID(tempvar)) continue;		
+				evtvar[ivar].st+=fatjetp4var[ivar]->at(ifatjet).pt();
+				evtvar[ivar].fatjet.push_back(tempvar);
+				if(WFatJetID(tempvar)){
+					evtvar[ivar].WFatJet++;
+				} 
+			}
+			evtvar[ivar].scale*=fatjetSF;
 		}
 		for(unsigned int ijet=0;ijet<jetp4->size();ijet++){
 			JetInfo temp;
-			temp.pt=jetp4->at(ijet).pt();
-			temp.eta=jetp4->at(ijet).eta();
-			temp.phi=jetp4->at(ijet).phi();
-			temp.passbloose=jetbloose->at(ijet);
-			temp.passbmedium=jetbmedium->at(ijet);
+			temp.p4=jetp4->at(ijet);
 			bool overlap=false;
-			for(unsigned int ifatjet=0;ifatjet<fatjetp4->size();ifatjet++){
-				if(ROOT::Math::VectorUtil::DeltaR(jetp4->at(ijet),fatjetp4->at(ifatjet))<0.8){
+			for(unsigned int ifatjet=0;ifatjet<evt.fatjet.size();ifatjet++){
+				if(ROOT::Math::VectorUtil::DeltaR(jetp4->at(ijet),evt.fatjet.at(ifatjet).p4)<0.8){
 					overlap=true;
 					break;
 				}				
@@ -470,102 +620,364 @@ bool HistCollection::Fill(const float lumi,const float cross_section,const char*
 			evt.jet.push_back(temp);
 			if(!overlap){
 				evt.st+=jetp4->at(ijet).pt();
-				if(jetptjesup->size()>0){
-					evt.stjesup+=jetptjesup->at(ijet);
-					evt.stjesdn+=jetptjesdn->at(ijet);
-					evt.stjerup+=jetptjerup->at(ijet);
-					evt.stjerdn+=jetptjerdn->at(ijet);
+			}
+		}
+		for(unsigned int ivar=0;ivar<56;ivar++){
+			for(unsigned int ijet=0;ijet<jetp4var[ivar]->size();ijet++){
+				JetInfo tempvar;
+				tempvar.p4=jetp4var[ivar]->at(ijet);
+				bool overlap=false;
+				for(unsigned int ifatjet=0;ifatjet<evtvar[ivar].fatjet.size();ifatjet++){
+					if(ROOT::Math::VectorUtil::DeltaR(jetp4var[ivar]->at(ijet),evtvar[ivar].fatjet.at(ifatjet).p4)<0.8){
+						overlap=true;
+						break;
+					}				
 				}
-				evt.ht+=jetp4->at(ijet).pt();
-				evt.njet_overlapremoved++;
+				tempvar.overlapwithfatjet=overlap;
+				if(!JetID(tempvar)) continue;
+				evtvar[ivar].jet.push_back(tempvar);
+				if(!overlap){
+					evtvar[ivar].st+=jetp4var[ivar]->at(ijet).pt();
+				}
 			}
 		}
 		evt.nbmedium=nbmedium;
-		evt.nbloose=nbloose;
 		evt.met=met->pt();
 		evt.st+=met->pt();
-		evt.stjesup+=metjesup->pt();
-		evt.stjesdn+=metjesdn->pt();
-		evt.stjerup+=metjerup->pt();
-		evt.stjerdn+=metjerdn->pt();
-                
-		evt.st=evt.st>1500?1499.5:evt.st;
-        	evt.stjesup=evt.stjesup>1500?1499.5:evt.stjesup;
-		evt.stjesdn=evt.stjesdn>1500?1499.5:evt.stjesdn;
-        	evt.stjerup=evt.stjerup>1500?1499.5:evt.stjerup;
-        	evt.stjerdn=evt.stjerdn>1500?1499.5:evt.stjerdn;
+		evt.st=evt.st>2000?1999.5:evt.st;
+		for(unsigned int ivar=0;ivar<56;ivar++){
+			evtvar[ivar].nbmedium=nbmedium;
+			evtvar[ivar].met=metp4var[ivar]->pt();
+			evtvar[ivar].st+=metp4var[ivar]->pt();
+			evtvar[ivar].st=evtvar[ivar].st>2000?1999.5:evtvar[ivar].st;
+		}
 
 		//build the event
 		//fill in histograms
 		if(Cut(evt)){//addition cut
-			htotal->Fill(evt.st,				evt.scale);
-			hpuWeightup->Fill(evt.st,			evt.scale/puWeight*puWeightup);
-			hpuWeightdn->Fill(evt.st,			evt.scale/puWeight*puWeightdn);
-			hprefireWeightup->Fill(evt.st,			evt.scale/prefireWeight*prefireWeightup);
-			hprefireWeightdn->Fill(evt.st,			evt.scale/prefireWeight*prefireWeightdn);
-			htriggerWeightup->Fill(evt.st,			evt.scale/triggerWeight*triggerWeightup);
-			htriggerWeightdn->Fill(evt.st,			evt.scale/triggerWeight*triggerWeightdn);
-			hlepSFelup->Fill(evt.st,			evt.scale/lepSF*lepSFelup);
-			hlepSFeldn->Fill(evt.st,			evt.scale/lepSF*lepSFeldn);
-			hlepSFmuup->Fill(evt.st,			evt.scale/lepSF*lepSFmuup);
-			hlepSFmudn->Fill(evt.st,			evt.scale/lepSF*lepSFmudn);
-			hbtagSFup->Fill(evt.st,				evt.scale/btagSF*btagSFup);
-			hbtagSFdn->Fill(evt.st,				evt.scale/btagSF*btagSFdn);
-			hjesup->Fill(evt.stjesup,			evt.scale);
-			hjesdn->Fill(evt.stjesdn,                      	evt.scale);
-			hjerup->Fill(evt.stjerup,                       evt.scale);
-			hjerdn->Fill(evt.stjerdn,                       evt.scale);
+			float variable_of_interest=Variable_of_Interest(evt);
+			variable_of_interest=variable_of_interest>2000?1999.5:variable_of_interest;
+			hcentral->Fill(variable_of_interest,				evt.scale);
+			hpuWeightup->Fill(variable_of_interest,			evt.scale/puWeight*puWeightup);
+			hpuWeightdn->Fill(variable_of_interest,			evt.scale/puWeight*puWeightdn);
+			hprefireWeightup->Fill(variable_of_interest,		evt.scale/prefireWeight*prefireWeightup);
+			hprefireWeightdn->Fill(variable_of_interest,		evt.scale/prefireWeight*prefireWeightdn);
+			htriggerWeightup->Fill(variable_of_interest,		evt.scale/triggerWeight*triggerWeightup);
+			htriggerWeightdn->Fill(variable_of_interest,		evt.scale/triggerWeight*triggerWeightdn);
+			hlepSFelup->Fill(variable_of_interest,			evt.scale/lepSF*lepSFelup);
+			hlepSFeldn->Fill(variable_of_interest,			evt.scale/lepSF*lepSFeldn);
+			hlepSFmuup->Fill(variable_of_interest,			evt.scale/lepSF*lepSFmuup);
+			hlepSFmudn->Fill(variable_of_interest,			evt.scale/lepSF*lepSFmudn);
+			hbtagSFup->Fill(variable_of_interest,				evt.scale/btagSF*btagSFup);
+			hbtagSFdn->Fill(variable_of_interest,				evt.scale/btagSF*btagSFdn);
+			hfatjetSFup->Fill(variable_of_interest,			evt.scale/fatjetSF*fatjetSFup);
+			hfatjetSFdn->Fill(variable_of_interest,			evt.scale/fatjetSF*fatjetSFdn);
 			if(qcd->size()==9){
-				hqcdscale[0]->Fill(evt.st,		evt.scale*qcd->at(0));
-				hqcdscale[1]->Fill(evt.st,		evt.scale*qcd->at(1));
-				hqcdscale[2]->Fill(evt.st,		evt.scale*qcd->at(3));
-				hqcdscale[3]->Fill(evt.st,		evt.scale*qcd->at(5));	
-				hqcdscale[4]->Fill(evt.st,		evt.scale*qcd->at(7));
-				hqcdscale[5]->Fill(evt.st,		evt.scale*qcd->at(8));
+				hqcdscale[0]->Fill(variable_of_interest,		evt.scale*qcd->at(0));
+				hqcdscale[1]->Fill(variable_of_interest,		evt.scale*qcd->at(1));
+				hqcdscale[2]->Fill(variable_of_interest,		evt.scale*qcd->at(3));
+				hqcdscale[3]->Fill(variable_of_interest,		evt.scale*qcd->at(5));	
+				hqcdscale[4]->Fill(variable_of_interest,		evt.scale*qcd->at(7));
+				hqcdscale[5]->Fill(variable_of_interest,		evt.scale*qcd->at(8));
+			}
+			else if(qcd->size()==8){
+				hqcdscale[0]->Fill(variable_of_interest,		evt.scale*qcd->at(0));
+				hqcdscale[1]->Fill(variable_of_interest,		evt.scale*qcd->at(1));
+				hqcdscale[2]->Fill(variable_of_interest,		evt.scale*qcd->at(3));
+				hqcdscale[3]->Fill(variable_of_interest,		evt.scale*qcd->at(4));	
+				hqcdscale[4]->Fill(variable_of_interest,		evt.scale*qcd->at(6));
+				hqcdscale[5]->Fill(variable_of_interest,		evt.scale*qcd->at(7));
+			}
+			if(pdf->size()<100){
+				for(unsigned int i=0;i<100;i++){
+					hpdf[i]->Fill(variable_of_interest,			evt.scale);
+				}
 			}
 			else{
-				hqcdscale[0]->Fill(evt.st,		evt.scale*qcd->at(0));
-				hqcdscale[1]->Fill(evt.st,		evt.scale*qcd->at(1));
-				hqcdscale[2]->Fill(evt.st,		evt.scale*qcd->at(3));
-				hqcdscale[3]->Fill(evt.st,		evt.scale*qcd->at(4));	
-				hqcdscale[4]->Fill(evt.st,		evt.scale*qcd->at(6));
-				hqcdscale[5]->Fill(evt.st,		evt.scale*qcd->at(7));
-			}
-			for(unsigned int i=0;i<100;i++){
-				hpdf[i]->Fill(evt.st,			evt.scale*pdf->at(i+1));
+				if(pdf_replica){
+					for(unsigned int i=0;i<100;i++){
+						hpdf[i]->Fill(variable_of_interest,			evt.scale*((pdf->at(i+1)-1)/sqrt(99)+1));
+					}
+				}
+				else{
+					for(unsigned int i=0;i<100;i++){
+						hpdf[i]->Fill(variable_of_interest,			evt.scale*pdf->at(i+1));
+					}
+				}
 			}
 
+			float alphas_up=1,alphas_dn=1;
+			if(pdf->size()==103){
+				alphas_dn=pdf->at(101);
+				alphas_up=pdf->at(102);
+			}
+			halphasup->Fill(variable_of_interest,				evt.scale*alphas_up);
+			halphasdn->Fill(variable_of_interest,				evt.scale*alphas_dn);
+			/*
+			if(EFTCoef->size()!=0){
+				for(unsigned int i=0;i<EFTCoef->size();i++){
+					hcentral_vs_EFTCoefficient->Fill(variable_of_interest,i,evt.scale / EFTCoef->at(0) * EFTCoef->at(i));
+				}
+			}
+			*/
 			if(EFT->size()!=0){
-				for(unsigned i=0;i<216;i++){
-					float scale=evt.scale/EFT->at(0)*EFT->at(i+1);
-					htotalEFT[i]->Fill(evt.st,				scale);
-					hpuWeightupEFT[i]->Fill(evt.st,				scale/puWeight*puWeightup);
-					hpuWeightdnEFT[i]->Fill(evt.st,				scale/puWeight*puWeightdn);
-					hprefireWeightupEFT[i]->Fill(evt.st,			scale/prefireWeight*prefireWeightup);
-					hprefireWeightdnEFT[i]->Fill(evt.st,			scale/prefireWeight*prefireWeightdn);
-					htriggerWeightupEFT[i]->Fill(evt.st,			scale/triggerWeight*triggerWeightup);
-					htriggerWeightdnEFT[i]->Fill(evt.st,			scale/triggerWeight*triggerWeightdn);
-					hlepSFelupEFT[i]->Fill(evt.st,				scale/lepSF*lepSFelup);
-					hlepSFeldnEFT[i]->Fill(evt.st,				scale/lepSF*lepSFeldn);
-					hlepSFmuupEFT[i]->Fill(evt.st,				scale/lepSF*lepSFmuup);
-					hlepSFmudnEFT[i]->Fill(evt.st,				scale/lepSF*lepSFmudn);
-					hbtagSFupEFT[i]->Fill(evt.st,				scale/btagSF*btagSFup);
-					hbtagSFdnEFT[i]->Fill(evt.st,				scale/btagSF*btagSFdn);
-					hjesupEFT[i]->Fill(evt.stjesup,				scale);
-					hjesdnEFT[i]->Fill(evt.stjesdn,                       	scale);
-					hjerupEFT[i]->Fill(evt.stjerup,                       	scale);
-					hjerdnEFT[i]->Fill(evt.stjerdn,                       	scale);
+				for(unsigned iEFT=0;iEFT<216;iEFT++){
+					float scale=evt.scale/EFT->at(0)*EFT->at(iEFT+1);
+					hcentralEFT[iEFT]->Fill(variable_of_interest,				scale);
+					hpuWeightupEFT[iEFT]->Fill(variable_of_interest,				scale/puWeight*puWeightup);
+					hpuWeightdnEFT[iEFT]->Fill(variable_of_interest,				scale/puWeight*puWeightdn);
+					hprefireWeightupEFT[iEFT]->Fill(variable_of_interest,			scale/prefireWeight*prefireWeightup);
+					hprefireWeightdnEFT[iEFT]->Fill(variable_of_interest,			scale/prefireWeight*prefireWeightdn);
+					htriggerWeightupEFT[iEFT]->Fill(variable_of_interest,			scale/triggerWeight*triggerWeightup);
+					htriggerWeightdnEFT[iEFT]->Fill(variable_of_interest,			scale/triggerWeight*triggerWeightdn);
+					hlepSFelupEFT[iEFT]->Fill(variable_of_interest,				scale/lepSF*lepSFelup);
+					hlepSFeldnEFT[iEFT]->Fill(variable_of_interest,				scale/lepSF*lepSFeldn);
+					hlepSFmuupEFT[iEFT]->Fill(variable_of_interest,				scale/lepSF*lepSFmuup);
+					hlepSFmudnEFT[iEFT]->Fill(variable_of_interest,				scale/lepSF*lepSFmudn);
+					hbtagSFupEFT[iEFT]->Fill(variable_of_interest,				scale/btagSF*btagSFup);
+					hbtagSFdnEFT[iEFT]->Fill(variable_of_interest,				scale/btagSF*btagSFdn);
+					hfatjetSFupEFT[iEFT]->Fill(variable_of_interest,				scale/fatjetSF*fatjetSFup);
+					hfatjetSFdnEFT[iEFT]->Fill(variable_of_interest,				scale/fatjetSF*fatjetSFdn);
+					if(qcd->size()==9){
+						hqcdscaleEFT[0][iEFT]->Fill(variable_of_interest,		scale*qcd->at(0));
+						hqcdscaleEFT[1][iEFT]->Fill(variable_of_interest,		scale*qcd->at(1));
+						hqcdscaleEFT[2][iEFT]->Fill(variable_of_interest,		scale*qcd->at(3));
+						hqcdscaleEFT[3][iEFT]->Fill(variable_of_interest,		scale*qcd->at(5));	
+						hqcdscaleEFT[4][iEFT]->Fill(variable_of_interest,		scale*qcd->at(7));
+						hqcdscaleEFT[5][iEFT]->Fill(variable_of_interest,		scale*qcd->at(8));
+					}
+					else{
+						hqcdscaleEFT[0][iEFT]->Fill(variable_of_interest,		scale*qcd->at(0));
+						hqcdscaleEFT[1][iEFT]->Fill(variable_of_interest,		scale*qcd->at(1));
+						hqcdscaleEFT[2][iEFT]->Fill(variable_of_interest,		scale*qcd->at(3));
+						hqcdscaleEFT[3][iEFT]->Fill(variable_of_interest,		scale*qcd->at(4));	
+						hqcdscaleEFT[4][iEFT]->Fill(variable_of_interest,		scale*qcd->at(6));
+						hqcdscaleEFT[5][iEFT]->Fill(variable_of_interest,		scale*qcd->at(7));
+					}
+					for(unsigned int i=0;i<100;i++){
+						hpdfEFT[i][iEFT]->Fill(variable_of_interest,			scale*pdf->at(i+1));
+					}
+					halphasupEFT[iEFT]->Fill(variable_of_interest,                           	scale*alphas_up);
+					halphasdnEFT[iEFT]->Fill(variable_of_interest,                           	scale*alphas_dn);
 				}
 			}			
 			//fill in histograms
 		}
+		for(unsigned int ivar=0;ivar<27;ivar++){
+			if(Cut(evtvar[ivar])){
+				float variable_of_interest=Variable_of_Interest(evtvar[ivar]);
+				variable_of_interest=variable_of_interest>2000?1999.5:variable_of_interest;	
+				hjesup[ivar]->Fill(variable_of_interest,				evtvar[ivar].scale);
+				if(EFT->size()!=0){
+					for(unsigned i=0;i<216;i++){
+						float scale=evtvar[ivar].scale/EFT->at(0)*EFT->at(i+1);
+						hjesupEFT[ivar][i]->Fill(variable_of_interest,				scale);
+					}
+				}
+				else{
+					for(unsigned i=0;i<216;i++){
+						float scale=evtvar[ivar].scale;
+						hjesupEFT[ivar][i]->Fill(variable_of_interest,				scale);
+					}
+				}
+			}
+			if(Cut(evtvar[ivar+28])){
+				float variable_of_interest=Variable_of_Interest(evtvar[ivar+28]);
+				variable_of_interest=variable_of_interest>2000?1999.5:variable_of_interest;
+				hjesdn[ivar]->Fill(variable_of_interest,			evtvar[ivar+28].scale);
+				if(EFT->size()!=0){
+					for(unsigned i=0;i<216;i++){
+						float scale=evtvar[ivar+28].scale/EFT->at(0)*EFT->at(i+1);
+						hjesdnEFT[ivar][i]->Fill(variable_of_interest,			scale);
+					}
+				}
+				else{
+					for(unsigned i=0;i<216;i++){
+						float scale=evtvar[ivar+28].scale;
+						hjesdnEFT[ivar][i]->Fill(variable_of_interest,			scale);
+					}
+				}
+			}		
+		}
+
+		if(Cut(evtvar[27])){
+			float variable_of_interest=Variable_of_Interest(evtvar[27]);
+			variable_of_interest=variable_of_interest>2000?1999.5:variable_of_interest;
+			hjerup->Fill(variable_of_interest,				evtvar[27].scale);
+			if(EFT->size()!=0){
+				for(unsigned i=0;i<216;i++){
+					float scale=evtvar[27].scale/EFT->at(0)*EFT->at(i+1);
+					hjerupEFT[i]->Fill(variable_of_interest,				scale);
+				}
+			}
+			else{
+				for(unsigned i=0;i<216;i++){
+					float scale=evtvar[27].scale;
+					hjerupEFT[i]->Fill(variable_of_interest,				scale);
+				}
+			}
+		}
+		if(Cut(evtvar[55])){
+			float variable_of_interest=Variable_of_Interest(evtvar[55]);
+			variable_of_interest=variable_of_interest>2000?1999.5:variable_of_interest;
+			hjerdn->Fill(variable_of_interest,				evtvar[55].scale);
+			if(EFT->size()!=0){
+				for(unsigned i=0;i<216;i++){
+					float scale=evtvar[55].scale/EFT->at(0)*EFT->at(i+1);
+					hjerdnEFT[i]->Fill(variable_of_interest,				scale);
+				}
+			}
+			else{
+				for(unsigned i=0;i<216;i++){
+					float scale=evtvar[55].scale;
+					hjerdnEFT[i]->Fill(variable_of_interest,				scale);
+				}
+			}
+		}
+		/*
+		if(!(Cut(evt) && evt.st<1400 && evt.st>800) && (Cut(evtvar[0]) && evtvar[0].st<1400 && evtvar[0].st>800)){
+			cout<<"lepton size	"<<evt.lep.size()<<"	"<<evtvar[0].lep.size()<<endl;
+			cout<<"jet size	"<<evt.jet.size()<<"	"<<evtvar[0].jet.size()<<endl;
+			cout<<"AK8jet size	"<<evt.fatjet.size()<<"	"<<evtvar[0].fatjet.size()<<endl;
+			cout<<"FatJet size	"<<evt.WFatJet<<"	"<<evtvar[0].WFatJet<<endl;
+			cout<<"lepton pt"<<endl;
+			for(unsigned int i=0;i<evt.lep.size();i++){
+				cout<<evt.lep.at(i).p4.pt()<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[0].lep.size();i++){
+				cout<<evtvar[0].lep.at(i).p4.pt()<<"	";
+			}
+			cout<<endl<<"ak8jet pt"<<endl;
+			for(unsigned int i=0;i<evt.fatjet.size();i++){
+				cout<<evt.fatjet.at(i).p4.pt()<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[0].fatjet.size();i++){
+				cout<<evtvar[0].fatjet.at(i).p4.pt()<<"	";
+			}
+			cout<<endl<<"jet pt"<<endl;
+			for(unsigned int i=0;i<evt.jet.size();i++){
+				cout<<evt.jet.at(i).p4.pt()<<" "<<!evt.jet.at(i).overlapwithfatjet<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[0].jet.size();i++){
+				cout<<evtvar[0].jet.at(i).p4.pt()<<" "<<!evtvar[0].jet.at(i).overlapwithfatjet<<"	";
+			}
+			cout<<endl;
+			cout<<"met	"<<evt.met<<"	"<<evtvar[0].met<<endl;
+			cout<<"stmet	"<<evt.st<<"	"<<evtvar[0].st<<endl;
+		}
+		if((Cut(evt) && evt.st<1400 && evt.st>800) && !(Cut(evtvar[0]) && evtvar[0].st<1400 && evtvar[0].st>800)){
+			cout<<"lepton size	"<<evt.lep.size()<<"	"<<evtvar[0].lep.size()<<endl;
+			cout<<"jet size	"<<evt.jet.size()<<"	"<<evtvar[0].jet.size()<<endl;
+			cout<<"AK8jet size	"<<evt.fatjet.size()<<"	"<<evtvar[0].fatjet.size()<<endl;
+			cout<<"FatJet size	"<<evt.WFatJet<<"	"<<evtvar[0].WFatJet<<endl;
+			cout<<"lepton pt"<<endl;
+			for(unsigned int i=0;i<evt.lep.size();i++){
+				cout<<evt.lep.at(i).p4.pt()<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[0].lep.size();i++){
+				cout<<evtvar[0].lep.at(i).p4.pt()<<"	";
+			}
+			cout<<endl<<"ak8jet pt"<<endl;
+			for(unsigned int i=0;i<evt.fatjet.size();i++){
+				cout<<evt.fatjet.at(i).p4.pt()<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[0].fatjet.size();i++){
+				cout<<evtvar[0].fatjet.at(i).p4.pt()<<"	";
+			}
+			cout<<endl<<"jet pt"<<endl;
+			for(unsigned int i=0;i<evt.jet.size();i++){
+				cout<<evt.jet.at(i).p4.pt()<<" "<<!evt.jet.at(i).overlapwithfatjet<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[0].jet.size();i++){
+				cout<<evtvar[0].jet.at(i).p4.pt()<<" "<<!evtvar[0].jet.at(i).overlapwithfatjet<<"	";
+			}
+			cout<<endl;
+			cout<<"met	"<<evt.met<<"	"<<evtvar[0].met<<endl;
+			cout<<"stmet	"<<evt.st<<"	"<<evtvar[0].st<<endl;
+		}
+		*/
+		/*
+		if(!(Cut(evt) && evt.st<1400 && evt.st>800) && (Cut(evtvar[28]) && evtvar[28].st<1400 && evtvar[28].st>800)){
+			cout<<"lepton size	"<<evt.lep.size()<<"	"<<evtvar[28].lep.size()<<endl;
+			cout<<"jet size	"<<evt.jet.size()<<"	"<<evtvar[28].jet.size()<<endl;
+			cout<<"AK8jet size	"<<evt.fatjet.size()<<"	"<<evtvar[28].fatjet.size()<<endl;
+			cout<<"FatJet size	"<<evt.WFatJet<<"	"<<evtvar[28].WFatJet<<endl;
+			cout<<"lepton pt"<<endl;
+			for(unsigned int i=0;i<evt.lep.size();i++){
+				cout<<evt.lep.at(i).p4.pt()<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[28].lep.size();i++){
+				cout<<evtvar[28].lep.at(i).p4.pt()<<"	";
+			}
+			cout<<endl<<"ak8jet pt"<<endl;
+			for(unsigned int i=0;i<evt.fatjet.size();i++){
+				cout<<evt.fatjet.at(i).p4.pt()<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[28].fatjet.size();i++){
+				cout<<evtvar[28].fatjet.at(i).p4.pt()<<"	";
+			}
+			cout<<endl<<"jet pt"<<endl;
+			for(unsigned int i=0;i<evt.jet.size();i++){
+				cout<<evt.jet.at(i).p4.pt()<<" "<<!evt.jet.at(i).overlapwithfatjet<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[28].jet.size();i++){
+				cout<<evtvar[28].jet.at(i).p4.pt()<<" "<<!evtvar[28].jet.at(i).overlapwithfatjet<<"	";
+			}
+			cout<<endl;
+			cout<<"met	"<<evt.met<<"	"<<evtvar[28].met<<endl;
+			cout<<"stmet	"<<evt.st<<"	"<<evtvar[28].st<<endl;
+		}
+		if((Cut(evt) && evt.st<1400 && evt.st>800) && !(Cut(evtvar[28]) && evtvar[28].st<1400 && evtvar[28].st>800)){
+			cout<<"lepton size	"<<evt.lep.size()<<"	"<<evtvar[28].lep.size()<<endl;
+			cout<<"jet size	"<<evt.jet.size()<<"	"<<evtvar[28].jet.size()<<endl;
+			cout<<"AK8jet size	"<<evt.fatjet.size()<<"	"<<evtvar[28].fatjet.size()<<endl;
+			cout<<"FatJet size	"<<evt.WFatJet<<"	"<<evtvar[28].WFatJet<<endl;
+			cout<<"lepton pt"<<endl;
+			for(unsigned int i=0;i<evt.lep.size();i++){
+				cout<<evt.lep.at(i).p4.pt()<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[28].lep.size();i++){
+				cout<<evtvar[28].lep.at(i).p4.pt()<<"	";
+			}
+			cout<<endl<<"ak8jet pt"<<endl;
+			for(unsigned int i=0;i<evt.fatjet.size();i++){
+				cout<<evt.fatjet.at(i).p4.pt()<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[28].fatjet.size();i++){
+				cout<<evtvar[28].fatjet.at(i).p4.pt()<<"	";
+			}
+			cout<<endl<<"jet pt"<<endl;
+			for(unsigned int i=0;i<evt.jet.size();i++){
+				cout<<evt.jet.at(i).p4.pt()<<" "<<!evt.jet.at(i).overlapwithfatjet<<"	";
+			}
+			cout<<endl;
+			for(unsigned int i=0;i<evtvar[28].jet.size();i++){
+				cout<<evtvar[28].jet.at(i).p4.pt()<<" "<<!evtvar[28].jet.at(i).overlapwithfatjet<<"	";
+			}
+			cout<<endl;
+			cout<<"met	"<<evt.met<<"	"<<evtvar[28].met<<endl;
+			cout<<"stmet	"<<evt.st<<"	"<<evtvar[28].st<<endl;
+		}
+		*/
 	}
 	return true;
 }
 
 bool HistCollection::Write(const char* path){
 	TFile *file=TFile::Open(path,"RECREATE");
-	htotal->Write();
+	//hcentral_vs_EFTCoefficient->Write();
+	hcentral->Write();
 	hpuWeightup->Write();
 	hpuWeightdn->Write();
 	hprefireWeightup->Write();
@@ -578,22 +990,24 @@ bool HistCollection::Write(const char* path){
 	hlepSFmudn->Write();
 	hbtagSFup->Write();
 	hbtagSFdn->Write();
-
-	hjesup->Write();
-	hjesdn->Write();
+	hfatjetSFup->Write();
+	hfatjetSFdn->Write();
+	for(unsigned int i=0;i<27;i++){
+		hjesup[i]->Write();
+		hjesdn[i]->Write();
+	}
 	hjerup->Write();
 	hjerdn->Write();
-
+	halphasup->Write();
+	halphasdn->Write();
 	for(unsigned int i=0;i<6;i++){
 		hqcdscale[i]->Write();
 	}
-
 	for(unsigned int i=0;i<100;i++){
 		hpdf[i]->Write();
 	}
-
 	for(unsigned i=0;i<216;i++){
-		htotalEFT[i]->Write();
+		hcentralEFT[i]->Write();
 		hpuWeightupEFT[i]->Write();
 		hpuWeightdnEFT[i]->Write();
 		hprefireWeightupEFT[i]->Write();
@@ -606,14 +1020,23 @@ bool HistCollection::Write(const char* path){
 		hlepSFmudnEFT[i]->Write();
 		hbtagSFupEFT[i]->Write();
 		hbtagSFdnEFT[i]->Write();
-
-		hjesupEFT[i]->Write();
-		hjesdnEFT[i]->Write();
+		hfatjetSFupEFT[i]->Write();
+		hfatjetSFdnEFT[i]->Write();
+		for(unsigned int j=0;j<27;j++){
+			hjesupEFT[j][i]->Write();
+			hjesdnEFT[j][i]->Write();
+		}
 		hjerupEFT[i]->Write();
 		hjerdnEFT[i]->Write();
+		halphasupEFT[i]->Write();
+		halphasdnEFT[i]->Write();
+		for(unsigned int j=0;j<6;j++){
+			hqcdscaleEFT[j][i]->Write();
+		}
+		for(unsigned int j=0;j<100;j++){
+			hpdfEFT[j][i]->Write();
+		}
 	}
-
-
 	file->Close();
 	return true;
 }
@@ -624,23 +1047,54 @@ class SignalRegion:public HistCollection{
 			return (lep.tight==1);
 		}
 
-                bool FatJetID(const FatJetInfo &fatjet){
-//			return true;
-		       	return (fatjet.WPid>=2 && fatjet.sdmass<=105. && fatjet.sdmass>=65. && fatjet.pt>200.);
-//			return (fatjet.deepMDW>0.82 && fatjet.sdmass<=105. && fatjet.sdmass>=65. && fatjet.pt>200.);
+		bool JetID(const JetInfo &jet){
+			return (jet.p4.pt()>30.);
+		}
+		bool FatJetID(const FatJetInfo &fatjet){
+			return (fatjet.p4.pt()>200.);
+		}
+		bool WFatJetID(const FatJetInfo &fatjet){
+			return (fatjet.WPid>=2 && fatjet.sdmass<=105. && fatjet.sdmass>=65. && fatjet.p4.pt()>200.);
+		}
+		bool Cut(const Event &evt){
+				if(!(evt.lep.size()==2)) return false;
+				if(!(evt.WFatJet>=1)) return false;
+				//if(!(evt.lep.at(0).pdgid * evt.lep.at(1).pdgid==143)) return false;
+				if(!(evt.nbmedium==0)) return false;
+				if(evt.lep.at(0).pdgid * evt.lep.at(1).pdgid==121 && abs(evt.mll-mZ)<20) return false;
+				if(!(evt.lep.at(0).p4.pt()>40 && evt.lep.at(1).p4.pt()>30)) return false;
+				if(!(evt.deltaRll>1.2)) return false;
+				//if(!(evt.met>60)) return false;
+				return true;
+		}
+};
+
+class ControlRegion_ttbar:public HistCollection{
+        protected:
+                bool LepID(const LepInfo &lep){
+                        return (lep.tight==1);
                 }
+
+		bool JetID(const JetInfo &jet){
+			return (jet.p4.pt()>30.);
+		}
+
+		bool FatJetID(const FatJetInfo &fatjet){
+                        return (fatjet.p4.pt()>200.);
+                }
+                bool WFatJetID(const FatJetInfo &fatjet){
+                        return (fatjet.WPid>=2 && fatjet.sdmass<=105. && fatjet.sdmass>=65. && fatjet.p4.pt()>200.);
+                }
+
                 bool Cut(const Event &evt){
                         if(!(evt.lep.size()==2)) return false;
-                        if(!(evt.fatjet.size()>=1)) return false;
-			//if(!(evt.lep.at(0).pdgid * evt.lep.at(1).pdgid==143)) return false;
-                        if(!(evt.nbmedium==0)) return false;
+                        if(!(evt.WFatJet>=1)) return false;
                         if(evt.lep.at(0).pdgid * evt.lep.at(1).pdgid==121 && abs(evt.mll-mZ)<20) return false;
-                        if(!(evt.lep.at(0).pt>40 && evt.lep.at(1).pt>30)) return false;
-			if(!(evt.deltaRll>1.2)) return false;
-			//if(!(evt.met>60)) return false;
+                        if(!(evt.lep.at(0).p4.pt()>40 && evt.lep.at(1).p4.pt()>30)) return false;
+                        if(!(evt.deltaRll>1.2)) return false;
+                        if(!(evt.nbmedium>=1)) return false;
                         return true;
                 }
 };
-
 
 
