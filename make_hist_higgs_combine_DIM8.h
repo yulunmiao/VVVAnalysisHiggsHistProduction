@@ -832,7 +832,7 @@ bool HistCollection::Fill(const float lumi,const float cross_section,const char*
 						if(index[iWC]!=0){
 							scale=evt.scale/EFT->at(0)*EFT->at(index[iWC]+iPoint);	
 						}
-						hjerupEFT[iEFT]->Fill(variable_of_interest,				scale);
+						hjerdnEFT[iEFT]->Fill(variable_of_interest,				scale);
 					}
 				}
 			}
